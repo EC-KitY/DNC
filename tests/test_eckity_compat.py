@@ -23,7 +23,7 @@ RUNNER_FILES = [
 
 def test_release_metadata_and_public_imports():
     assert version("eckity") == "0.4.2"
-    assert version("eckity-dnc") == "0.1.2"
+    assert version("eckity-dnc") == "0.1.3"
     assert DeepNeuralCrossover is not None
     assert DeepNeuralCrossoverConfig is not None
 
