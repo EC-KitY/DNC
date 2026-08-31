@@ -1,16 +1,20 @@
-from eckity.genetic_operators import IntVectorOnePointMutation
+import json
 
-from eckity.evaluators.simple_individual_evaluator import SimpleIndividualEvaluator
-
+import numpy as np
 from eckity.algorithms.simple_evolution import SimpleEvolution
 from eckity.breeders.simple_breeder import SimpleBreeder
 from eckity.creators import GAIntVectorCreator
+from eckity.evaluators.simple_individual_evaluator import SimpleIndividualEvaluator
+from eckity.genetic_operators import IntVectorOnePointMutation
 from eckity.genetic_operators.selections.tournament_selection import TournamentSelection
 from eckity.statistics.best_average_worst_statistics import BestAverageWorstStatistics
 from eckity.subpopulation import Subpopulation
-import json
-import numpy as np
-from eckity_dnc import DeepNeuralCrossoverConfig, DeepNeuralCrossover
+
+from eckity_dnc import (
+    DeepNeuralCrossover,
+    DeepNeuralCrossoverConfig,
+    DNCFitnessEvaluator,
+)
 
 
 class BinPackingEvaluator(SimpleIndividualEvaluator):
@@ -76,14 +80,19 @@ def main():
     population_size = 100
 
     individual_creator = GAIntVectorCreator(length=ind_length, bounds=(min_bound, max_bound))
-    bpp_eval = BinPackingEvaluator(n_items=dataset_n_items, item_weights=dataset_item_weights,
-                                   bin_capacity=dataset_bin_capacity, fitness_dict=fitness_dict)
+    bpp_eval = DNCFitnessEvaluator(
+        BinPackingEvaluator(
+            n_items=dataset_n_items,
+            item_weights=dataset_item_weights,
+            bin_capacity=dataset_bin_capacity,
+            fitness_dict=fitness_dict,
+        )
+    )
 
     dnc_config = DeepNeuralCrossoverConfig(
         embedding_dim=64,
         sequence_length=ind_length,
         num_embeddings=dataset_n_items + 1,
-        running_mean_decay=0.95,
         batch_size=1024,
         learning_rate=1e-4,
         use_device='cpu',

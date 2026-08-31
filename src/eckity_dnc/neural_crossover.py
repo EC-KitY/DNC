@@ -1,7 +1,8 @@
 import torch
-from .sequence_linear_embedding import SequenceLinearEmbedding
-from .pointer_encoder import PointerEncoder
+
 from .pointer_decoder import PointerDecoder
+from .pointer_encoder import PointerEncoder
+from .sequence_linear_embedding import SequenceLinearEmbedding
 
 
 class NeuralCrossover(torch.nn.Module):
@@ -63,15 +64,22 @@ class NeuralCrossover(torch.nn.Module):
             a, (h, c) = self.decoder(previous_chosen_sequence_repeat_for_batch, ref_between_parents, (h, c))
             # y: (batch_size, 1)
 
-            if torch.rand(1) < epsilon_greedy:
-                sample_from_a_dist = torch.flatten(torch.randint(0, a.shape[1], (batch_size, 1))).to(self.device)
+            if torch.rand((), device=a.device) < epsilon_greedy:
+                sample_from_a_dist = torch.randint(
+                    0, a.shape[1], (batch_size,), device=a.device
+                )
             else:
-                sample_from_a_dist = torch.distributions.Categorical(a).sample().to(self.device)
+                sample_from_a_dist = torch.distributions.Categorical(a).sample()
 
             distributions_samples.append(sample_from_a_dist)
             attention_values.append(a)
             # previous_chosen_sequence_repeat_for_batch: (batch_size, 1, input_size)
-            previous_chosen_sequence_repeat_for_batch = self.embedding(sample_from_a_dist).unsqueeze(1)
+            selected_embedding_indices = sample_from_a_dist.view(-1, 1, 1).expand(
+                -1, 1, ref_between_parents.shape[-1]
+            )
+            previous_chosen_sequence_repeat_for_batch = torch.gather(
+                ref_between_parents, dim=1, index=selected_embedding_indices
+            )
 
         # y: (batch_size, seq_len)
         attention_values = torch.stack(attention_values, dim=1)

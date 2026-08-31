@@ -2,11 +2,22 @@ import copy
 import os
 import random
 import time
-import numpy as np
 from copy import deepcopy
+
+import numpy as np
 from tqdm import tqdm
-from ga_auxiliary import create_output_folder, save_list, save_dict, is_in_dict, get_fit, \
-    save_fitness, n_point_crossover_pairs, n_point_mutate, tournament_selection
+
+from ga_auxiliary import (
+    create_output_folder,
+    get_fit,
+    is_in_dict,
+    n_point_crossover_pairs,
+    n_point_mutate,
+    save_dict,
+    save_fitness,
+    save_list,
+    tournament_selection,
+)
 
 
 class SelectionGA:
@@ -98,7 +109,7 @@ class SelectionGA:
         :param output_folder: folder to save data in.
         :return: None
         """
-        with open(output_folder + "am_alive", "w") as f:
+        with open(os.path.join(output_folder, "am_alive"), "w") as f:
             f.write("Still running at generation :" + str(curr_generation) + "\n")
 
         is_last_gen = (curr_generation == (self.n_generations - 1))
@@ -110,14 +121,14 @@ class SelectionGA:
         if is_last_gen:
             if self.save_fitness_info:
                 written_dict = {str(k): v.tolist() for k, v in self.fitness_dict.items()}
-                save_dict(written_dict, output_folder + "fitness_dict.json")
+                save_dict(written_dict, os.path.join(output_folder, "fitness_dict.json"))
 
             if self.save_population_info:
                 save_dict({gen_num: pop.tolist() for gen_num, pop in self.pop_dict.items()},
-                          output_folder + "gens_dict.json")
+                          os.path.join(output_folder, "gens_dict.json"))
 
         for metric_name, metric_list in self.generation_metrics.items():
-            save_list(metric_list, output_folder + metric_name + ".txt")
+            save_list(metric_list, os.path.join(output_folder, metric_name + ".txt"))
 
     def init_population(self, length_to_gen: int, population_size):
         """

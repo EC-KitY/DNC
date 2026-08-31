@@ -12,7 +12,7 @@ def read_float_list_from_text_file(path: str) -> list:
     :return: list of strings
     """
     with open(path, 'r') as f:
-        return [float(l) for l in f.readlines()]
+        return [float(line) for line in f.readlines()]
 
 
 def create_output_folder(path: str) -> None:
@@ -21,10 +21,7 @@ def create_output_folder(path: str) -> None:
     :param path:
     :return:
     """
-    try:
-        os.mkdir(path)
-    except FileExistsError:
-        pass
+    os.makedirs(path, exist_ok=True)
 
 
 def read_dict(name: str):

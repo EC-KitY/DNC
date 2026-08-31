@@ -2,12 +2,18 @@ from eckity.algorithms.simple_evolution import SimpleEvolution
 from eckity.breeders.simple_breeder import SimpleBreeder
 from eckity.creators import GABitStringVectorCreator
 from eckity.evaluators.simple_individual_evaluator import SimpleIndividualEvaluator
-from eckity.genetic_operators.crossovers.vector_k_point_crossover import VectorKPointsCrossover
-from eckity.genetic_operators.mutations.vector_random_mutation import BitStringVectorNFlipMutation
+from eckity.genetic_operators.crossovers.vector_k_point_crossover import (
+    VectorKPointsCrossover,
+)
+from eckity.genetic_operators.mutations.vector_random_mutation import (
+    BitStringVectorNFlipMutation,
+)
 from eckity.genetic_operators.selections.tournament_selection import TournamentSelection
 from eckity.statistics.best_average_worst_statistics import BestAverageWorstStatistics
 from eckity.subpopulation import Subpopulation
-from eckity.termination_checkers.threshold_from_target_termination_checker import ThresholdFromTargetTerminationChecker
+from eckity.termination_checkers.threshold_from_target_termination_checker import (
+    ThresholdFromTargetTerminationChecker,
+)
 
 
 class OneMaxEvaluator(SimpleIndividualEvaluator):
@@ -31,7 +37,7 @@ class OneMaxEvaluator(SimpleIndividualEvaluator):
 def main():
     # Initialize the evolutionary algorithm
     algo = SimpleEvolution(
-        Subpopulation(creators=GABitStringVectorCreator(length=100, bounds=(0, 10)),
+        Subpopulation(creators=GABitStringVectorCreator(length=100, bounds=(0, 1)),
                       population_size=300,
                       # user-defined fitness evaluation method
                       evaluator=OneMaxEvaluator(),

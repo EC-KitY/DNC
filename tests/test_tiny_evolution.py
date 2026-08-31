@@ -14,6 +14,7 @@ from eckity.subpopulation import Subpopulation
 from eckity_dnc import (
     DeepNeuralCrossover,
     DeepNeuralCrossoverConfig,
+    DNCFitnessEvaluator,
 )
 
 
@@ -27,7 +28,7 @@ def test_tiny_bit_vector_evolves_and_trains_dnc():
     np.random.seed(7)
     torch.manual_seed(7)
 
-    evaluator = OneMaxEvaluator()
+    evaluator = DNCFitnessEvaluator(OneMaxEvaluator())
     creator = GAIntVectorCreator(length=4, bounds=(0, 1))
     config = DeepNeuralCrossoverConfig(
         embedding_dim=2,

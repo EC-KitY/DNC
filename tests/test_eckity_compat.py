@@ -1,16 +1,24 @@
 import ast
 import random
+import runpy
 from importlib.metadata import version
 from pathlib import Path
 
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python 3.10
+    import tomli as tomllib
 from eckity.creators import GAIntVectorCreator
 from eckity.evaluators import SimpleIndividualEvaluator
 from eckity.genetic_encodings.ga import IntVector
 from eckity.genetic_operators import IntVectorOnePointMutation
 
 import eckity_dnc
-from eckity_dnc import DeepNeuralCrossover, DeepNeuralCrossoverConfig
-
+from eckity_dnc import (
+    DeepNeuralCrossover,
+    DeepNeuralCrossoverConfig,
+    DNCFitnessEvaluator,
+)
 
 ROOT = Path(__file__).parents[1]
 RUNNER_FILES = [
@@ -23,7 +31,8 @@ RUNNER_FILES = [
 
 def test_release_metadata_and_public_imports():
     assert version("eckity") == "0.4.2"
-    assert version("eckity-dnc") == "0.1.3"
+    assert version("eckity-dnc") == "0.2.0"
+    assert DNCFitnessEvaluator is not None
     assert DeepNeuralCrossover is not None
     assert DeepNeuralCrossoverConfig is not None
 
@@ -34,12 +43,24 @@ def test_release_metadata_and_public_imports():
         *(ROOT / "src" / "eckity_dnc").rglob("*.py"),
     ]
     assert eckity_dnc.__all__ == [
+        "DNCFitnessEvaluator",
         "DeepNeuralCrossover",
         "DeepNeuralCrossoverConfig",
     ]
     assert not hasattr(eckity_dnc, legacy_creator)
     for path in source_files:
         assert legacy_creator not in path.read_text(encoding="utf-8")
+
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    dependencies = project["project"]["dependencies"]
+    dev_dependencies = project["project"]["optional-dependencies"]["dev"]
+    assert any(dependency.lower().startswith("scipy") for dependency in dependencies)
+    assert any(dependency.lower().startswith("tqdm") for dependency in dev_dependencies)
+
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert "running_mean_decay" not in readme
+    assert "EC-KitY 0.4.2 imports it" in readme
+    assert "RELEASING.md" not in readme
 
 
 class RecordingEvaluator(SimpleIndividualEvaluator):
@@ -50,6 +71,7 @@ class RecordingEvaluator(SimpleIndividualEvaluator):
 
 def test_dnc_converts_native_creator_vectors_for_evaluation():
     evaluator = RecordingEvaluator()
+    fitness_evaluator = DNCFitnessEvaluator(evaluator)
     creator = GAIntVectorCreator(length=2, bounds=(0, 1))
     crossover = DeepNeuralCrossover(
         probability=1.0,
@@ -61,7 +83,7 @@ def test_dnc_converts_native_creator_vectors_for_evaluation():
             batch_size=2,
             use_device="cpu",
         ),
-        individual_evaluator=evaluator,
+        individual_evaluator=fitness_evaluator,
         vector_creator=creator,
     )
 
@@ -127,3 +149,26 @@ def test_runners_do_not_use_legacy_selection_tuples_or_direction_keywords():
                     assert all(
                         not isinstance(item, ast.Tuple) for item in keyword.value.elts
                     )
+
+
+def test_legacy_runner_is_safe_to_import(monkeypatch):
+    monkeypatch.syspath_prepend(str(ROOT))
+    runpy.run_path(str(ROOT / "runner.py"), run_name="runner_import_test")
+
+
+def test_one_max_demo_uses_bit_bounds():
+    tree = ast.parse((ROOT / "eckity_demo.py").read_text(encoding="utf-8"))
+    creator_calls = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and getattr(node.func, "id", getattr(node.func, "attr", ""))
+        == "GABitStringVectorCreator"
+    ]
+    assert len(creator_calls) == 1
+    bounds = next(
+        keyword.value
+        for keyword in creator_calls[0].keywords
+        if keyword.arg == "bounds"
+    )
+    assert [element.value for element in bounds.elts] == [0, 1]

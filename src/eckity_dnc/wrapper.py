@@ -1,13 +1,14 @@
-from .neural_crossover import NeuralCrossover
 import torch
-from numpy import stack as np_stack
 from eckity.before_after_publisher import BeforeAfterPublisher
+from numpy import stack as np_stack
+
+from .neural_crossover import NeuralCrossover
 
 BEFORE_TRAIN_EVENT_NAME = 'before_train'
 AFTER_TRAIN_EVENT_NAME = 'after_train'
 
 class NeuralCrossoverWrapper(BeforeAfterPublisher):
-    def __init__(self, embedding_dim, sequence_length, num_embeddings, get_fitness_function, running_mean_decay=0.99,
+    def __init__(self, embedding_dim, sequence_length, num_embeddings, get_fitness_function,
                  batch_size=32, load_weights_path=None, freeze_weights=False, learning_rate=1e-3, epsilon_greedy=0.1,
                  use_scheduler=False, use_device='cpu', adam_decay=0, clip_grads=False, n_parents=2, scheduling_threshold=0, higher_is_better = True, events=None, event_names=None):
         if scheduling_threshold < 0:
@@ -22,7 +23,6 @@ class NeuralCrossoverWrapper(BeforeAfterPublisher):
         self.neural_crossover = NeuralCrossover(embedding_dim, embedding_dim, num_embeddings, sequence_length,
                                                 n_parents=n_parents, device=use_device).to(
             self.device)
-        self.running_mean_decay = running_mean_decay
         self.optimizer = torch.optim.Adam(self.neural_crossover.parameters(), lr=learning_rate, weight_decay=adam_decay)
         self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, 'min', patience=10)
         self.get_fitness_function = get_fitness_function
@@ -150,8 +150,11 @@ class NeuralCrossoverWrapper(BeforeAfterPublisher):
         self.optimizer.zero_grad()
         sampled_solutions_proba = torch.gather(sampled_action_space, 2, sampled_solutions.unsqueeze(2)).squeeze(-1).to(
             self.device)
+        reward_values = self._fitness_to_rewards(fitness_values)
         loss = -torch.mean(
-            torch.log(sampled_solutions_proba) * (fitness_values.type(torch.DoubleTensor)).to(self.device))
+            torch.log(sampled_solutions_proba)
+            * (reward_values.type(torch.DoubleTensor)).to(self.device)
+        )
 
         loss.backward()
 
@@ -189,7 +192,10 @@ class NeuralCrossoverWrapper(BeforeAfterPublisher):
         """
         self.batch_stack_fitness_values.append(fitness_values)
 
-    def get_crossover(self, parents_matrix):
+    def _fitness_to_rewards(self, fitness_values):
+        return fitness_values if self.higher_is_better else -fitness_values
+
+    def get_crossover_with_fitness(self, parents_matrix):
         """
         Uses the neural crossover to select the crossover points from the parents.
         Then performs one step of training on the neural crossover.
@@ -209,16 +215,25 @@ class NeuralCrossoverWrapper(BeforeAfterPublisher):
         child2_fitness_values = [self.get_fitness_function(child) for child in
                                  child2.detach().cpu().numpy()]
 
-        child1_fitness_values = torch.Tensor(child1_fitness_values).type(torch.FloatTensor)
-        child2_fitness_values = torch.Tensor(child2_fitness_values).type(torch.FloatTensor)
+        child1_fitness_tensor = torch.Tensor(child1_fitness_values).type(torch.FloatTensor)
+        child2_fitness_tensor = torch.Tensor(child2_fitness_values).type(torch.FloatTensor)
 
-        self.update_batch_stack(child1_fitness_values)
-        self.update_batch_stack(child2_fitness_values)
+        self.update_batch_stack(child1_fitness_tensor)
+        self.update_batch_stack(child2_fitness_tensor)
         self.run_epoch()
 
-        return child1.detach().cpu().numpy().tolist(), child2.detach().cpu().numpy()
+        return (
+            child1.detach().cpu().numpy().tolist(),
+            child2.detach().cpu().numpy(),
+            child1_fitness_values,
+            child2_fitness_values,
+        )
 
-    def cross_pairs(self, parents_pairs):
+    def get_crossover(self, parents_matrix):
+        child1, child2, _, _ = self.get_crossover_with_fitness(parents_matrix)
+        return child1, child2
+
+    def _cross_pairs_with_fitness(self, parents_pairs):
         if len(parents_pairs) == 0:
             return []
 
@@ -226,11 +241,27 @@ class NeuralCrossoverWrapper(BeforeAfterPublisher):
 
         parents_matrix_np = np_stack(parents_grouped)
         parents_matrix = torch.from_numpy(parents_matrix_np)
-        # parents_matrix = torch.cat([torch.unsqueeze(torch.tensor(group), 0) for group in parents_grouped], dim=0)
 
         self.acc_batch_length += parents_matrix.shape[1]
-        child1, child2 = self.get_crossover(parents_matrix)
-        return list(zip(child1, child2))
+        child1, child2, child1_fitness, child2_fitness = self.get_crossover_with_fitness(
+            parents_matrix
+        )
+        return [
+            ((first_child, first_fitness), (second_child, second_fitness))
+            for first_child, second_child, first_fitness, second_fitness in zip(
+                child1, child2, child1_fitness, child2_fitness
+            )
+        ]
+
+    def cross_pairs(self, parents_pairs):
+        crossed_pairs = self._cross_pairs_with_fitness(parents_pairs)
+        return [
+            (first_child[0], second_child[0])
+            for first_child, second_child in crossed_pairs
+        ]
+
+    def cross_pairs_with_fitness(self, parents_pairs):
+        return self._cross_pairs_with_fitness(parents_pairs)
 
     def save_weights(self, path):
         torch.save(self.neural_crossover.state_dict(), path)
